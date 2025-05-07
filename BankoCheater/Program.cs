@@ -9,15 +9,40 @@ namespace BankoCheater
 {
     internal class Program
     {
-        // Hvor mange plader vil vi hente?
-        private const int AntalPlader = 200;
+        // Hvor mange plader vil vi hente første gang?
+        private const int AntalPlader = 100000;
 
         static void Main(string[] args)
         {
-            var plader = HentBankoPlader(AntalPlader);
+            // --------------------------------------------------
+            // 1) Tjek om brugeren vil forny cachefilen
+            // --------------------------------------------------
+            bool refresh = args.Any(a => a.Equals("--refresh", StringComparison.OrdinalIgnoreCase));
+            if (refresh)
+                JSON_Load_Save.DeleteCache();
 
-            Console.WriteLine("\n Bankoplader hentet. Klar til at råbe tal!");
-            Console.WriteLine("Skriv et tal (1-90) eller 'q' for at afslutte.\n");
+            // --------------------------------------------------
+            // 2) Forsøg at indlæse plader fra lokal JSON
+            //    – ellers hent fra web og gem
+            // --------------------------------------------------
+            List<BankoPlade> plader = JSON_Load_Save.LoadPlader();
+
+            if (plader.Count == 0)
+            {
+                Console.WriteLine("Ingen lokale plader fundet – henter fra web …");
+                plader = HentBankoPlader(AntalPlader);          // ← Selenium‑metoden
+                JSON_Load_Save.SavePlader(plader);
+                Console.WriteLine($"Plader gemt i {JSON_Load_Save.CachePath}");
+            }
+            else
+            {
+                Console.WriteLine($"Indlæst {plader.Count} plader fra {JSON_Load_Save.CachePath}");
+            }
+
+            // --------------------------------------------------
+            // 3) Klar til spillet
+            // --------------------------------------------------
+            Console.WriteLine("\n Bankoplader klar. Skriv et tal (1‑90) eller 'q' for at afslutte.\n");
 
             var kaldteTal = new HashSet<int>();
 
@@ -29,7 +54,7 @@ namespace BankoCheater
                 if (input is null) continue;
                 if (input.Equals("q", StringComparison.OrdinalIgnoreCase)) break;
 
-                if (!int.TryParse(input, out int tal) || tal is < 1 or > 90)
+                if (!int.TryParse(input, out int tal) || tal < 1 || tal > 90)
                 {
                     Console.WriteLine("  Ugyldigt tal. Prøv igen.\n");
                     continue;
@@ -43,24 +68,23 @@ namespace BankoCheater
 
                 bool nogenHarTallet = false;
 
-                foreach (var plade in plader)
+                foreach (BankoPlade plade in plader)
                 {
                     for (int r = 0; r < 3; r++)
                     {
-                        // HashSet.Remove returnerer true, hvis tallet var i rækken
                         if (plade.ManglendeTal[r].Remove(tal))
                         {
                             nogenHarTallet = true;
                             Console.WriteLine($" Plade '{plade.ID}' har {tal} i række {r + 1}");
 
-                            // 1-række-banko?
+                            // BANKO på én række?
                             if (!plade.RækkeErFærdig[r] && plade.ManglendeTal[r].Count == 0)
                             {
                                 plade.RækkeErFærdig[r] = true;
                                 Console.WriteLine($" BANKO på 1 række – plade {plade.ID}");
                             }
 
-                            // fuld plade?
+                            // Fuld plade?
                             if (plade.PladenErFærdig && !plade.FuldPladeRåbt)
                             {
                                 plade.FuldPladeRåbt = true;
@@ -80,12 +104,12 @@ namespace BankoCheater
         }
 
         // --------------------------------------------------
-        // Henter bankoplader fra websitet
+        // Henter bankoplader fra websitet (kun brugt første gang)
         // --------------------------------------------------
         private static List<BankoPlade> HentBankoPlader(int antal)
         {
             var options = new ChromeOptions();
-            options.AddArgument("--headless=new"); // hurtigere, nyere headless-tilstand
+            options.AddArgument("--headless=new"); // hurtigere, nyere headless‑tilstand
 
             using var driver = new ChromeDriver(options);
             driver.Navigate().GoToUrl("https://mercantech.github.io/Banko/");
@@ -95,9 +119,6 @@ namespace BankoCheater
 
             // Sikre at siden er klar
             wait.Until(d => d.FindElement(By.Id("tekstboks")).Displayed);
-
-            // Gem første værdi af p111 (den plade der ligger dér fra starten)
-            string sidsteP111 = driver.FindElement(By.Id("p111")).Text;
 
             for (int p = 1; p <= antal; p++)
             {
@@ -109,23 +130,16 @@ namespace BankoCheater
                 tekstboks.SendKeys(navn);
                 driver.FindElement(By.Id("knap")).Click();
 
-                // Vent på at P111 ændrer sig (garanterer NYE tal)
+                // Vent på at P111 er synlig (siden nulstiller)
                 wait.Until(d =>
                 {
-                    try
-                    {
-                        return d.FindElement(By.Id("p111")).Displayed;
-                    }
+                    try { return d.FindElement(By.Id("p111")).Displayed; }
                     catch { return false; }
                 });
 
-                // Opdater reference-teksten til næste runde
-                sidsteP111 = driver.FindElement(By.Id("p111")).Text;
-
-                // ---------- Scrap pladen ----------
+                // ----------- Scrap pladen -----------
                 var plade = new BankoPlade { ID = navn };
 
-                // VIGTIGT: id-prefikset er ALTID p1rc – websiden nulstiller hver gang
                 for (int r = 1; r <= 3; r++)
                 {
                     for (int c = 1; c <= 9; c++)
@@ -134,7 +148,7 @@ namespace BankoCheater
                         var cellText = driver.FindElement(By.Id(cellId)).Text;
 
                         if (int.TryParse(cellText, out int tal))
-                            plade.ManglendeTal[r - 1].Add(tal); // spring blanke felter over
+                            plade.ManglendeTal[r - 1].Add(tal);  // spring blanke felter over
                     }
                 }
 
