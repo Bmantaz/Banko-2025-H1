@@ -5,9 +5,9 @@ using System.Text.Json;
 
 namespace BankoCheater
 {
-    /// <summary>
+   
     /// Loader/gemmer Bankoplader til/fra en lokal JSON‑fil.
-    /// </summary>
+ 
     internal static class JSON_Load_Save
     {
         private const string JsonSti = "plader.json";
