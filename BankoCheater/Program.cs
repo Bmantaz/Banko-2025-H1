@@ -74,9 +74,6 @@ namespace BankoCheater
                     {
                         if (plade.ManglendeTal[r].Remove(tal))
                         {
-                            nogenHarTallet = true;
-                            Console.WriteLine($" Plade '{plade.ID}' har {tal} i række {r + 1}");
-
                             // BANKO på én række?
                             if (!plade.RækkeErFærdig[r] && plade.ManglendeTal[r].Count == 0)
                             {
@@ -92,12 +89,8 @@ namespace BankoCheater
                             }
                         }
                     }
-                }
+                }              
 
-                if (!nogenHarTallet)
-                    Console.WriteLine(" Ingen plader har dette tal.");
-
-                Console.WriteLine();
             }
 
             Console.WriteLine(" Program afsluttet.");
